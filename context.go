@@ -1,7 +1,7 @@
 // Package web provides a web.go compitable layer for reusing the code written with
 // hoisie's `web.go` framework. Basiclly this package add web.Context to
 // martini's dependency injection system.
-package web
+package middleware
 
 import (
 	"bytes"
@@ -9,13 +9,15 @@ import (
 	"crypto/sha1"
 	"encoding/base64"
 	"fmt"
-	"github.com/go-martini/martini"
+	htemplate "html/template"
 	"io/ioutil"
 	"mime"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/go-martini/martini"
 )
 
 // A Context object is created for every incoming HTTP request, and is
@@ -27,12 +29,27 @@ type Context struct {
 	Params       map[string]string
 	cookieSecret string
 	http.ResponseWriter
+	*renderer
 }
 
 // if cookie secret is set to "", then SetSecureCookie would not work
-func ContextWithCookieSecret(secret string) martini.Handler {
+func ContextWithCookieSecret(secret string, options ...Options) martini.Handler {
+	// render
+	opt := prepareOptions(options)
+	cs := prepareCharset(opt.Charset)
+	t := compile(opt)
+
 	return func(w http.ResponseWriter, req *http.Request, mc martini.Context) {
-		ctx := &Context{req, map[string]string{}, secret, w}
+		// render
+		var tc *htemplate.Template
+		if martini.Env == martini.Dev {
+			tc = compile(opt)
+		} else {
+			tc, _ = t.Clone()
+		}
+		render := &renderer{w, req, tc, opt, cs}
+
+		ctx := &Context{req, map[string]string{}, secret, w, render}
 		//set some default headers
 		tm := time.Now().UTC()
 

@@ -1,4 +1,4 @@
-package web
+package middleware
 
 import (
 	"github.com/go-martini/martini"
