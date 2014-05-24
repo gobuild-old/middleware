@@ -10,14 +10,17 @@ import (
 	"encoding/base64"
 	"fmt"
 	htemplate "html/template"
+	"io"
 	"io/ioutil"
 	"mime"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-martini/martini"
+	"github.com/gobuild/log"
 )
 
 // A Context object is created for every incoming HTTP request, and is
@@ -30,7 +33,130 @@ type Context struct {
 	cookieSecret string
 	http.ResponseWriter
 	*renderer
+
+	// Flash *Flash
+	Data map[string]interface{}
 }
+
+// new func added
+// Query querys form parameter.
+func (ctx *Context) Query(name string) string {
+	ctx.Request.ParseForm()
+	return ctx.Request.Form.Get(name)
+}
+
+// HasError returns true if error occurs in form validation.
+func (ctx *Context) HasApiError() bool {
+	hasErr, ok := ctx.Data["HasError"]
+	if !ok {
+		return false
+	}
+	return hasErr.(bool)
+}
+
+func (ctx *Context) GetErrMsg() string {
+	return ctx.Data["ErrorMsg"].(string)
+}
+
+// HasError returns true if error occurs in form validation.
+func (ctx *Context) HasError() bool {
+	hasErr, ok := ctx.Data["HasError"]
+	if !ok {
+		return false
+	}
+	// ctx.Flash.ErrorMsg = ctx.Data["ErrorMsg"].(string)
+	// ctx.Data["Flash"] = ctx.Flash
+	return hasErr.(bool)
+}
+
+// HTML calls render.HTML underlying but reduce one argument.
+func (ctx *Context) HTML(status int, name string, htmlOpt ...HTMLOptions) {
+	ctx.renderer.HTML(status, name, ctx.Data, htmlOpt...)
+}
+
+// // RenderWithErr used for page has form validation but need to prompt error to users.
+// func (ctx *Context) RenderWithErr(msg, tpl string, form auth.Form) {
+// 	if form != nil {
+// 		auth.AssignForm(form, ctx.Data)
+// 	}
+// 	// ctx.Flash.ErrorMsg = msg
+// 	// ctx.Data["Flash"] = ctx.Flash
+// 	ctx.HTML(200, tpl)
+// }
+
+// Handle handles and logs error by given status.
+func (ctx *Context) Handle(status int, desc string, err error) {
+	if err != nil {
+		log.Error("%s: %v", desc, err)
+		if martini.Dev != martini.Prod {
+			ctx.Data["ErrorMsg"] = err
+		}
+	}
+
+	ctx.Data["Description"] = "desc:" + desc
+	ctx.Data["Status"] = status
+	switch status {
+	case 404:
+		ctx.Data["Title"] = "Page Not Found"
+	case 500:
+		ctx.Data["Title"] = "Internal Server Error"
+	default:
+		ctx.Data["Title"] = fmt.Sprintf("Status - %d", status)
+	}
+	ctx.HTML(status, fmt.Sprintf("status/%dx", status/10))
+}
+
+func (ctx *Context) ServeFile(file string, names ...string) {
+	var name string
+	if len(names) > 0 {
+		name = names[0]
+	} else {
+		name = filepath.Base(file)
+	}
+	ctx.Header().Set("Content-Description", "File Transfer")
+	ctx.Header().Set("Content-Type", "application/octet-stream")
+	ctx.Header().Set("Content-Disposition", "attachment; filename="+name)
+	ctx.Header().Set("Content-Transfer-Encoding", "binary")
+	ctx.Header().Set("Expires", "0")
+	ctx.Header().Set("Cache-Control", "must-revalidate")
+	ctx.Header().Set("Pragma", "public")
+	http.ServeFile(ctx.ResponseWriter, ctx.Request, file)
+}
+
+func (ctx *Context) ServeContent(name string, r io.ReadSeeker, params ...interface{}) {
+	modtime := time.Now()
+	for _, p := range params {
+		switch v := p.(type) {
+		case time.Time:
+			modtime = v
+		}
+	}
+	ctx.Header().Set("Content-Description", "File Transfer")
+	ctx.Header().Set("Content-Type", "application/octet-stream")
+	ctx.Header().Set("Content-Disposition", "attachment; filename="+name)
+	ctx.Header().Set("Content-Transfer-Encoding", "binary")
+	ctx.Header().Set("Expires", "0")
+	ctx.Header().Set("Cache-Control", "must-revalidate")
+	ctx.Header().Set("Pragma", "public")
+	http.ServeContent(ctx.ResponseWriter, ctx.Request, name, modtime, r)
+}
+
+// type Flash struct {
+// 	url.Values
+// 	ErrorMsg, SuccessMsg string
+// }
+
+// func (f *Flash) Error(msg string) {
+// 	f.Set("error", msg)
+// 	f.ErrorMsg = msg
+// }
+
+// func (f *Flash) Success(msg string) {
+// 	f.Set("success", msg)
+// 	f.SuccessMsg = msg
+// }
+
+// end of added --
 
 // if cookie secret is set to "", then SetSecureCookie would not work
 func ContextWithCookieSecret(secret string, options ...Options) martini.Handler {
@@ -49,7 +175,23 @@ func ContextWithCookieSecret(secret string, options ...Options) martini.Handler 
 		}
 		render := &renderer{w, req, tc, opt, cs}
 
-		ctx := &Context{req, map[string]string{}, secret, w, render}
+		// Request      *http.Request
+		// 	Params       map[string]string
+		// 	cookieSecret string
+		// 	http.ResponseWriter
+		// 	*renderer
+
+		// 	Flash *Flash
+		// 	Data  map[string]interface{}
+		ctx := &Context{
+			Request:        req,
+			Params:         map[string]string{},
+			cookieSecret:   secret,
+			ResponseWriter: w,
+			renderer:       render,
+			// Flash:          new(Flash),
+			Data: make(map[string]interface{}),
+		}
 		//set some default headers
 		tm := time.Now().UTC()
 
