@@ -1,16 +1,3 @@
-# middleware.Context
-origin from **martini-contrib/web**
-
-[API Reference](http://godoc.org/github.com/gobuild/middleware)
-
-## Description
-`middleware.Context` provides a render(forked from martini-contrib/render), beego like ctx.
-
-## Usage
-
-ref: <https://github.com/martini-contrib/render>
-
-~~~ go
 package main
 
 import (
@@ -33,8 +20,7 @@ func main() {
 	})
 	m.Get("/home", func(ctx *middleware.Context) {
 		ctx.Data["Title"] = "home"
-		ctx.HTML(200, "home") // use templates by default
+		ctx.HTML(200, "home")
 	})
 	m.Run()
 }
-~~~
