@@ -17,7 +17,7 @@ import (
 	"html/template"
 	"strings"
 
-	"github.com/codegangsta/martini"
+	"github.com/go-martini/martini"
 	"github.com/gobuild/middleware"
 )
 
